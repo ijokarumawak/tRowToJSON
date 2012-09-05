@@ -18,7 +18,9 @@
   INode node = (INode)codeGenArgument.getArgument();
   String cid = node.getUniqueName();
   List<Map<String, String>> jsonFields = (List<Map<String,String>>)ElementParameterParser.getObjectValue(node, "__JSON_FIELDS__");
+  List<Map<String, String>> excludeColumns = (List<Map<String,String>>)ElementParameterParser.getObjectValue(node, "__EXCLUDE_COLUMNS__");
   String jsonColumn = ElementParameterParser.getValue(node, "__JSON_COLUMN__");
+  boolean useAllColumn = "true".equalsIgnoreCase(ElementParameterParser.getValue(node, "__USE_ALL_COLUMN__"));
   IConnection inMainCon = null;
   List<? extends IConnection> connsIn = node.getIncomingConnections(EConnectionType.FLOW_MAIN);
   
@@ -60,21 +62,36 @@
       String outLabel = col.getLabel();
       String outPattern = col.getPattern();
       if(jsonColumn.equals(outLabel)){ %>
-		org.codehaus.jettison.json.JSONObject json = new org.codehaus.jettison.json.JSONObject();
+		org.codehaus.jettison.json.JSONObject json_<%=cid %> = new org.codehaus.jettison.json.JSONObject();
 		<%
-		for(Map<String, String> jsonField : jsonFields) {
-		    String jsonFieldName = (String)jsonField.get("JSON_FIELD");
-		    String inputColumn = (String)jsonField.get("INPUT_COLUMN");
-		    if(jsonFieldName == null || jsonFieldName.length() == 0) {
-		        jsonFieldName = "\"" + inputColumn + "\"";
+		if(useAllColumn) {
+		  preCol: for(IMetadataColumn preColumn : preColumns) {
+		    for(Map<String, String> excludeColumn : excludeColumns) {
+		      if(excludeColumn.get("EXCLUDE_COLUMN").equals(preColumn.getLabel())) {
+		         continue preCol;
+		      }
 		    }
-		%>
-            // {JSON_FIELD=, INPUT_COLUMN=}
-    	    json.put(<%=jsonFieldName %>, <%=preconnName %>.<%=inputColumn %>);
-		<%
-		}
+          %>
+            json_<%=cid %>.put("<%=preColumn.getLabel() %>", <%=preconnName %>.<%=preColumn.getLabel() %>);
+          <%
+		  }
+		  
+		} else {
+          // manual column mapping
+          for(Map<String, String> jsonField : jsonFields) {
+              String jsonFieldName = (String)jsonField.get("JSON_FIELD");
+              String inputColumn = (String)jsonField.get("INPUT_COLUMN");
+              if(jsonFieldName == null || jsonFieldName.length() == 0) {
+                  jsonFieldName = "\"" + inputColumn + "\"";
+              }
+          %>
+              // {JSON_FIELD=, INPUT_COLUMN=}
+              json_<%=cid %>.put(<%=jsonFieldName %>, <%=preconnName %>.<%=inputColumn %>);
+          <%
+          }
+        }
         %>
-        <%=outconnName %>.<%=outLabel %> = json.toString();
+        <%=outconnName %>.<%=outLabel %> = json_<%=cid %>.toString();
       <% } else { %>
         <%=outconnName %>.<%=outLabel %> = <%=preconnName %>.<%=outLabel %>;
       <% } %>
